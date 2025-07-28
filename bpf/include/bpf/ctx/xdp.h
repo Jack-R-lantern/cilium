@@ -156,27 +156,29 @@ l3_csum_replace(const struct xdp_md *ctx, __u64 off, const __u32 from,
 {
 	__u32 size = flags & BPF_F_HDR_FIELD_MASK;
 	__sum16 *sum;
-	int ret;
+	int ret = 0;
 
 	if (unlikely(flags & ~(BPF_F_HDR_FIELD_MASK)))
 		return -EINVAL;
 	if (unlikely(size != 0 && size != 2))
 		return -EINVAL;
 	/* See xdp_load_bytes(). */
-	asm volatile("r1 = *(u32 *)(%[ctx] +0)\n\t"
-		     "r2 = *(u32 *)(%[ctx] +4)\n\t"
-		     "%[off] &= %[offmax]\n\t"
-		     "r1 += %[off]\n\t"
-		     "%[sum] = r1\n\t"
-		     "r1 += 2\n\t"
-		     "if r1 > r2 goto +2\n\t"
-		     "%[ret] = 0\n\t"
-		     "goto +1\n\t"
-		     "%[ret] = %[errno]\n\t"
-		     : [ret]"=r"(ret), [sum]"=r"(sum)
-		     : [ctx]"r"(ctx), [off]"r"(off),
-		       [offmax]"i"(__CTX_OFF_MAX), [errno]"i"(-EINVAL)
-		     : "r1", "r2");
+	// asm volatile("r1 = *(u32 *)(%[ctx] +0)\n\t"
+	// 	     "r2 = *(u32 *)(%[ctx] +4)\n\t"
+	// 	     "%[off] &= %[offmax]\n\t"
+	// 	     "r1 += %[off]\n\t"
+	// 	     "%[sum] = r1\n\t"
+	// 	     "r1 += 2\n\t"
+	// 	     "if r1 > r2 goto +2\n\t"
+	// 	     "%[ret] = 0\n\t"
+	// 	     "goto +1\n\t"
+	// 	     "%[ret] = %[errno]\n\t"
+	// 	     : [ret]"=r"(ret), [sum]"=r"(sum)
+	// 	     : [ctx]"r"(ctx), [off]"r"(off),
+	// 	       [offmax]"i"(__CTX_OFF_MAX), [errno]"i"(-EINVAL)
+	// 	     : "r1", "r2");
+	ret = xdp_load_bytes(ctx, off, &sum, 2);
+	
 	if (!ret)
 		from ? __csum_replace_by_4(sum, from, to) :
 		       __csum_replace_by_diff(sum, to);
