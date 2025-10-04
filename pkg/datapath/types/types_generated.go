@@ -960,6 +960,8 @@ type TraceNotify struct {
 	}
 	_         [12]byte
 	IPTraceID uint64
+	OrigPort  uint16
+	Pad       [6]uint8
 }
 
 // TraceSockNotify is generated from the BPF C type trace_sock_notify.
