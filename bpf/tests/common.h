@@ -279,3 +279,30 @@ test_result_cursor = 0;
 	} \
 	assert(sum == count); \
 })
+
+#define NETNS(progtype, name) __section(progtype "/test/" name "/netns")
+
+#define SET_ERROR	400
+
+struct {
+	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(key_size, sizeof(__u32));
+	__uint(value_size, 256);
+	__uint(max_entries, 1);
+} sandbox_netns_map __section_maps_btf;
+
+#define set_netns(name) \
+	do { \
+		__u32 __key = 0; \
+		char *netns = NULL; \
+		netns = test_bpf_map_lookup_elem(&sandbox_netns_map, &__key); \
+		if (!netns) { \
+			return SET_ERROR; \
+		} \
+		if (!(name) || *(name) == '\0') { \
+			__bpf_memcpy(netns, __FILE_NAME__, sizeof(__FILE_NAME__)); \
+		} else { \
+			__bpf_memcpy(netns, (const void *)(name), sizeof(name)); \
+		} \
+	} while (0)
+

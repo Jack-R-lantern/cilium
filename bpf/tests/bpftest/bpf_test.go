@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -30,6 +31,7 @@ import (
 	"github.com/cilium/hive/hivetest"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/vishvananda/netlink/nl"
+	"github.com/vishvananda/netns"
 	"golang.org/x/tools/cover"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
@@ -212,6 +214,10 @@ func loadAndRunSpec(t *testing.T, entry fs.DirEntry, instrLog io.Writer) []*cove
 		}
 
 		progs := testNameToPrograms[match[1]]
+		if match[2] == "netns" {
+			checkProgUnique(progs.netnsProg, match[1], match[2])
+			progs.netnsProg = coll.Programs[progName]
+		}
 		if match[2] == "pktgen" {
 			checkProgUnique(progs.pktgenProg, match[1], match[2])
 			progs.pktgenProg = coll.Programs[progName]
@@ -265,8 +271,10 @@ func loadAndRunSpec(t *testing.T, entry fs.DirEntry, instrLog io.Writer) []*cove
 	// Get maps used for common mocking facilities
 	skbMdMap := coll.Maps[mockSkbMetaMap]
 
+	sbNetNsMap := coll.Maps[sandboxNetNsMap]
+
 	for _, name := range testNames {
-		t.Run(name, subTest(testNameToPrograms[name], coll.Maps[suiteResultMap], skbMdMap))
+		t.Run(name, subTest(testNameToPrograms[name], coll.Maps[suiteResultMap], skbMdMap, sbNetNsMap))
 	}
 
 	if globalLogReader != nil {
@@ -324,21 +332,24 @@ func loadAndPrepSpec(t *testing.T, elfPath string) *ebpf.CollectionSpec {
 }
 
 type programSet struct {
+	netnsProg  *ebpf.Program
 	pktgenProg *ebpf.Program
 	setupProg  *ebpf.Program
 	checkProg  *ebpf.Program
 }
 
-var checkProgRegex = regexp.MustCompile(`[^/]+/test/([^/]+)/((?:check)|(?:setup)|(?:pktgen))`)
+var checkProgRegex = regexp.MustCompile(`[^/]+/test/([^/]+)/((?:check)|(?:setup)|(?:pktgen)|(?:netns))`)
 
 const (
 	ResultSuccess = 1
 
 	suiteResultMap = "suite_result_map"
 	mockSkbMetaMap = "mock_skb_meta_map"
+
+	sandboxNetNsMap = "sandbox_netns_map"
 )
 
-func subTest(progSet programSet, resultMap *ebpf.Map, skbMdMap *ebpf.Map) func(t *testing.T) {
+func subTest(progSet programSet, resultMap *ebpf.Map, skbMdMap *ebpf.Map, sbNetNsMap *ebpf.Map) func(t *testing.T) {
 	return func(t *testing.T) {
 		// create ctx with the max allowed size(4k - head room - tailroom)
 		data := make([]byte, 4096-256-320)
@@ -355,6 +366,36 @@ func subTest(progSet programSet, resultMap *ebpf.Map, skbMdMap *ebpf.Map) func(t
 			statusCode uint32
 			err        error
 		)
+		if progSet.netnsProg != nil {
+			if statusCode, data, ctx, err = runBpfProgram(progSet.netnsProg, data, ctx); err != nil {
+				t.Fatalf("error while running netns prog: %s", err)
+			}
+			if statusCode == 400 {
+				t.Fatalf("error while running netns prog: %s", err)
+			}
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+
+			var key uint32
+			value := make([]byte, sbNetNsMap.ValueSize())
+			sbNetNsMap.Lookup(&key, &value)
+			n := bytes.IndexByte(value[:], 0)
+			netnsName := string(value[:n])
+
+			origNs, err := netns.Get()
+			if err != nil {
+				t.Fatalf("error while set netns: %v", err)
+			}
+			defer origNs.Close()
+
+			sandboxNs, err := netns.NewNamed(netnsName)
+			if err != nil {
+				t.Fatalf("error while set netns: %v", err)
+			}
+			defer netns.DeleteNamed(netnsName)
+			defer sandboxNs.Close()
+			defer netns.Set(origNs)
+		}
 		if progSet.pktgenProg != nil {
 			if statusCode, data, ctx, err = runBpfProgram(progSet.pktgenProg, data, ctx); err != nil {
 				t.Fatalf("error while running pktgen prog: %s", err)

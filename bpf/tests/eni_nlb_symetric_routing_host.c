@@ -58,6 +58,14 @@ mock_redirect_neigh(int ifindex,
 
 ASSIGN_CONFIG(__u32, interface_ifindex, PRIMARY_IFACE)
 
+NETNS("tc", "eni_nlb_symetric_routing_egress_v4_setup")
+int eni_nlb_symetric_routing_egress_v4_setup_netns(struct __ctx_buff __maybe_unused *ctx)
+{
+	set_netns(__FILE_NAME__);
+
+	return 0;
+}
+
 /* Setup for this test:
  *
  * +-------World IP---------+    +----------Pod IP---------+
@@ -187,6 +195,14 @@ int eni_nlb_symetric_routing_egress_v4_setup_check(const struct __ctx_buff *ctx)
 		test_fatal("dst TCP port changed");
 
 	test_finish();
+}
+
+NETNS("tc", "eni_nlb_symetric_routing_egress_v4_setup_icmp")
+int eni_nlb_symetric_routing_egress_v4_setup_icmp_netns(struct __ctx_buff __maybe_unused *ctx)
+{
+	set_netns(__FILE_NAME__);
+
+	return 0;
 }
 
 /* The same test, but for ICMP */
