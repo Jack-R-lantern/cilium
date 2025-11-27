@@ -158,7 +158,6 @@ type BGPAutoDiscovery struct {
 	// mode is the mode of the auto-discovery.
 	//
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=DefaultGateway
 	Mode BGPAutoDiscoveryMode `json:"mode"`
 
 	// defaultGateway is the configuration for auto-discovery of the default gateway.

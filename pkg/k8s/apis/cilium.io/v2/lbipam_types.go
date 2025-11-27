@@ -98,7 +98,6 @@ const (
 
 // CiliumLoadBalancerIPPoolIPBlock describes a single IP block.
 type CiliumLoadBalancerIPPoolIPBlock struct {
-	// +kubebuilder:validation:Format=cidr
 	// +kubebuilder:validation:Optional
 	Cidr IPv4orIPv6CIDR `json:"cidr,omitempty"`
 	// +kubebuilder:validation:Optional

@@ -36,6 +36,7 @@ linters:
               - "*"
             enable:
               - optionalorrequired
+              - duplicatemarkers
           lintersConfig:
             optionalorrequired:
               preferredOptionalMarker: "kubebuilder:validation:Optional"
