@@ -42,6 +42,8 @@ type BPFLXC struct {
 	NATIPv4Masquerade [4]byte `config:"nat_ipv4_masquerade"`
 	// Masquerade address for IPv6 traffic.
 	NATIPv6Masquerade [16]byte `config:"nat_ipv6_masquerade"`
+	// Enable policy accounting.
+	PolicyAccounting bool `config:"policy_accounting"`
 	// The log level for policy verdicts in workload endpoints.
 	PolicyVerdictLogFilter uint32 `config:"policy_verdict_log_filter"`
 	// Pull security context from IP cache.
@@ -60,5 +62,5 @@ func NewBPFLXC(node Node) *BPFLXC {
 		0x0, 0x0, 0x0, [8]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
 		[4]byte{0x0, 0x0, 0x0, 0x0},
 		[16]byte{0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
-		0x0, false, 0x0, 0x0, node}
+		false, 0x0, false, 0x0, 0x0, node}
 }

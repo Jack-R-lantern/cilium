@@ -60,11 +60,6 @@ var (
 		Description: "Enable trace notifications",
 	}
 
-	specPolicyAccounting = Option{
-		Define:      "POLICY_ACCOUNTING",
-		Description: "Enable policy accounting ",
-	}
-
 	specPolicyVerdictNotify = Option{
 		Define:      "POLICY_VERDICT_NOTIFY",
 		Description: "Enable policy verdict notifications",
