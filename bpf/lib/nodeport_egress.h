@@ -23,15 +23,15 @@ static __always_inline bool
 nodeport_has_nat_conflict_ipv6(const struct ipv6hdr *ip6 __maybe_unused,
 			       struct ipv6_nat_target *target __maybe_unused)
 {
-#if defined(TUNNEL_MODE) && defined(IS_BPF_OVERLAY)
-	union v6addr router_ip = CONFIG(router_ipv6);
-	if (ipv6_addr_equals((union v6addr *)&ip6->saddr, &router_ip)) {
-		ipv6_addr_copy(&target->addr, &router_ip);
-		target->needs_ct = true;
+	if (CONFIG(enable_tunnel_mode) && is_defined(IS_BPF_OVERLAY)) {
+		union v6addr router_ip = CONFIG(router_ipv6);
+		if (ipv6_addr_equals((union v6addr *)&ip6->saddr, &router_ip)) {
+			ipv6_addr_copy(&target->addr, &router_ip);
+			target->needs_ct = true;
 
-		return true;
+			return true;
+		}
 	}
-#endif /* TUNNEL_MODE && IS_BPF_OVERLAY */
 
 #if defined(IS_BPF_HOST)
 	const union v6addr dr_addr = IPV6_DIRECT_ROUTING;
@@ -286,14 +286,14 @@ static __always_inline bool
 nodeport_has_nat_conflict_ipv4(const struct iphdr *ip4 __maybe_unused,
 			       struct ipv4_nat_target *target __maybe_unused)
 {
-#if defined(TUNNEL_MODE) && defined(IS_BPF_OVERLAY)
-	if (ip4->saddr == IPV4_GATEWAY) {
-		target->addr = IPV4_GATEWAY;
-		target->needs_ct = true;
+	if (CONFIG(enable_tunnel_mode) && is_defined(IS_BPF_OVERLAY)) {
+		if (ip4->saddr == IPV4_GATEWAY) {
+			target->addr = IPV4_GATEWAY;
+			target->needs_ct = true;
 
-		return true;
+			return true;
+		}
 	}
-#endif /* TUNNEL_MODE && IS_BPF_OVERLAY */
 
 #if defined(IS_BPF_HOST)
 	/* direct_routing_dev_ifindex == interface_ifindex cannot be moved into

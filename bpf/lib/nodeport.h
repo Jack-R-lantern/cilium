@@ -1019,13 +1019,13 @@ nodeport_rev_dnat_ipv6(struct __ctx_buff *ctx, enum ct_dir dir,
 			return DROP_INVALID;
 		ctx_snat_done_set(ctx);
 
-#ifdef TUNNEL_MODE
-		info = lookup_ip6_remote_endpoint((union v6addr *)&ip6->daddr, 0);
-		if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel) {
-			src_sec_identity = REMOTE_NODE_ID;
-			goto encap_redirect;
+		if (CONFIG(enable_tunnel_mode)) {
+			info = lookup_ip6_remote_endpoint((union v6addr *)&ip6->daddr, 0);
+			if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel) {
+				src_sec_identity = REMOTE_NODE_ID;
+				goto encap_redirect;
+			}
 		}
-#endif
 
 		goto fib_lookup;
 	}
@@ -1044,28 +1044,27 @@ out:
 
 	return CTX_ACT_OK;
 
-#if (defined(ENABLE_EGRESS_GATEWAY_COMMON) && (defined(IS_BPF_XDP) || defined(IS_BPF_HOST))) ||	\
-    defined(TUNNEL_MODE)
 encap_redirect:
-	src_port = tunnel_gen_src_port_v6(&tuple);
+	if ((is_defined(ENABLE_EGRESS_GATEWAY_COMMON) && (is_defined(IS_BPF_XDP) || is_defined(IS_BPF_HOST))) || CONFIG(enable_tunnel_mode)) {
+		src_port = tunnel_gen_src_port_v6(&tuple);
 
-	ret = nodeport_add_tunnel_encap(ctx, IPV4_DIRECT_ROUTING, src_port,
-					info, src_sec_identity, trace->reason,
-					trace->monitor, &ifindex, bpf_htons(ETH_P_IPV6));
-	if (IS_ERR(ret))
-		return ret;
+		ret = nodeport_add_tunnel_encap(ctx, IPV4_DIRECT_ROUTING, src_port,
+						info, src_sec_identity, trace->reason,
+						trace->monitor, &ifindex, bpf_htons(ETH_P_IPV6));
+		if (IS_ERR(ret))
+			return ret;
 
-	if (ret == CTX_ACT_REDIRECT && ifindex)
-		return ctx_redirect(ctx, ifindex, 0);
+		if (ret == CTX_ACT_REDIRECT && ifindex)
+			return ctx_redirect(ctx, ifindex, 0);
 
-	fib_params.l.ipv4_src = IPV4_DIRECT_ROUTING;
-	fib_params.l.ipv4_dst = info->tunnel_endpoint.ip4;
-	fib_params.l.family = AF_INET;
+		fib_params.l.ipv4_src = IPV4_DIRECT_ROUTING;
+		fib_params.l.ipv4_dst = info->tunnel_endpoint.ip4;
+		fib_params.l.family = AF_INET;
 
-	/* neigh map doesn't contain DMACs for other nodes */
-	allow_neigh_map = false;
-	goto fib_redirect;
-#endif
+		/* neigh map doesn't contain DMACs for other nodes */
+		allow_neigh_map = false;
+		goto fib_redirect;
+	}
 
 fib_lookup:
 	if (is_v4_in_v6((union v6addr *)&ip6->saddr)) {
@@ -1088,10 +1087,7 @@ fib_lookup:
 			       (union v6addr *)&ip6->daddr);
 	}
 
-#if (defined(ENABLE_EGRESS_GATEWAY_COMMON) && (defined(IS_BPF_XDP) || defined(IS_BPF_HOST))) ||	\
-    defined(TUNNEL_MODE)
 fib_redirect:
-#endif
 	return fib_redirect(ctx, true, &fib_params, allow_neigh_map, ext_err, &ifindex);
 }
 
@@ -1251,10 +1247,8 @@ int tail_nodeport_nat_egress_ipv6(struct __ctx_buff *ctx)
 	struct ipv6hdr *ip6;
 	fraginfo_t fraginfo;
 	__s8 ext_err = 0;
-#ifdef TUNNEL_MODE
 	const struct remote_endpoint_info *info;
 	union v6addr *dst;
-#endif
 
 	if (nat_46x64)
 		build_v4_in_v6(&target.addr, IPV4_DIRECT_ROUTING);
@@ -1271,12 +1265,12 @@ int tail_nodeport_nat_egress_ipv6(struct __ctx_buff *ctx)
 
 	l4_off = ETH_HLEN + ret;
 
-#ifdef TUNNEL_MODE
-	dst = (union v6addr *)&ip6->daddr;
-	info = lookup_ip6_remote_endpoint(dst, 0);
-	if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel)
-		target.addr = CONFIG(router_ipv6);
-#endif
+	if (CONFIG(enable_tunnel_mode)) {
+		dst = (union v6addr *)&ip6->daddr;
+		info = lookup_ip6_remote_endpoint(dst, 0);
+		if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel)
+			target.addr = CONFIG(router_ipv6);
+	}
 
 	ret = lb6_extract_tuple(ctx, ip6, fraginfo, l4_off, &tuple);
 	if (IS_ERR(ret))
@@ -1296,31 +1290,32 @@ int tail_nodeport_nat_egress_ipv6(struct __ctx_buff *ctx)
 
 	ctx_snat_done_set(ctx);
 
-#ifdef TUNNEL_MODE
-	if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel) {
-		__be16 src_port;
+	if (CONFIG(enable_tunnel_mode)) {
+		if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel) {
+			__be16 src_port;
 
-		src_port = tunnel_gen_src_port_v6(&tuple);
+			src_port = tunnel_gen_src_port_v6(&tuple);
 
-		ret = nodeport_add_tunnel_encap(ctx,
-						IPV4_DIRECT_ROUTING,
-						src_port,
-						info,
-						WORLD_IPV6_ID,
-						trace.reason,
-						trace.monitor,
-						&oif,
-						bpf_htons(ETH_P_IPV6));
-		if (IS_ERR(ret))
-			goto drop_err;
+			ret = nodeport_add_tunnel_encap(ctx,
+							IPV4_DIRECT_ROUTING,
+							src_port,
+							info,
+							WORLD_IPV6_ID,
+							trace.reason,
+							trace.monitor,
+							&oif,
+							bpf_htons(ETH_P_IPV6));
+			if (IS_ERR(ret))
+				goto drop_err;
 
-		if (ret == CTX_ACT_REDIRECT && oif) {
-			return ctx_redirect(ctx, oif, 0);
+			if (ret == CTX_ACT_REDIRECT && oif) {
+				return ctx_redirect(ctx, oif, 0);
+			}
+
+			goto fib_ipv4;
 		}
-
-		goto fib_ipv4;
 	}
-#endif
+
 	if (!revalidate_data(ctx, &data, &data_end, &ip6)) {
 		ret = DROP_INVALID;
 		goto drop_err;
@@ -1332,9 +1327,7 @@ int tail_nodeport_nat_egress_ipv6(struct __ctx_buff *ctx)
 		if (ret < 0)
 			goto drop_err;
 
-#ifdef TUNNEL_MODE
 fib_ipv4:
-#endif
 		if (!revalidate_data(ctx, &data, &data_end, &ip4)) {
 			ret = DROP_INVALID;
 			goto drop_err;
@@ -2385,14 +2378,14 @@ nodeport_rev_dnat_ipv4(struct __ctx_buff *ctx, struct trace_ctx *trace,
 			return DROP_INVALID;
 		ctx_snat_done_set(ctx);
 
-#if defined(TUNNEL_MODE)
-		info = lookup_ip4_remote_endpoint(ip4->daddr, 0);
-		if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel) {
-			tunnel_endpoint = info->tunnel_endpoint.ip4;
-			src_sec_identity = REMOTE_NODE_ID;
-			dst_sec_identity = info->sec_identity;
+		if (CONFIG(enable_tunnel_mode)) {
+			info = lookup_ip4_remote_endpoint(ip4->daddr, 0);
+			if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel) {
+				tunnel_endpoint = info->tunnel_endpoint.ip4;
+				src_sec_identity = REMOTE_NODE_ID;
+				dst_sec_identity = info->sec_identity;
+			}
 		}
-#endif
 
 		goto redirect;
 	}
@@ -2435,34 +2428,32 @@ redirect:
 	if (unlikely(ret != CTX_ACT_OK))
 		return ret;
 
-#if (defined(ENABLE_EGRESS_GATEWAY_COMMON) &&				\
-     (defined(IS_BPF_XDP) || defined(IS_BPF_HOST))) ||			\
-    defined(TUNNEL_MODE)
-	if (tunnel_endpoint) {
-		__be16 src_port = tunnel_gen_src_port_v4(&tuple);
-		struct remote_endpoint_info fake_info = {0};
+	if ((is_defined(ENABLE_EGRESS_GATEWAY_COMMON) && (is_defined(IS_BPF_XDP) || is_defined(IS_BPF_HOST))) || CONFIG(enable_tunnel_mode)) {
+		if (tunnel_endpoint) {
+			__be16 src_port = tunnel_gen_src_port_v4(&tuple);
+			struct remote_endpoint_info fake_info = {0};
 
-		/* Needed because info might be null while tunnel_endpoint isn't. */
-		fake_info.tunnel_endpoint.ip4 = tunnel_endpoint;
-		fake_info.flag_has_tunnel_ep = true;
-		fake_info.sec_identity = dst_sec_identity;
-		ret = nodeport_add_tunnel_encap(ctx, IPV4_DIRECT_ROUTING, src_port,
-						&fake_info, src_sec_identity,
-						trace->reason, trace->monitor, &ifindex,
-						bpf_htons(ETH_P_IP));
-		if (IS_ERR(ret))
-			return ret;
+			/* Needed because info might be null while tunnel_endpoint isn't. */
+			fake_info.tunnel_endpoint.ip4 = tunnel_endpoint;
+			fake_info.flag_has_tunnel_ep = true;
+			fake_info.sec_identity = dst_sec_identity;
+			ret = nodeport_add_tunnel_encap(ctx, IPV4_DIRECT_ROUTING, src_port,
+							&fake_info, src_sec_identity,
+							trace->reason, trace->monitor, &ifindex,
+							bpf_htons(ETH_P_IP));
+			if (IS_ERR(ret))
+				return ret;
 
-		if (ret == CTX_ACT_REDIRECT && ifindex)
-			return ctx_redirect(ctx, ifindex, 0);
+			if (ret == CTX_ACT_REDIRECT && ifindex)
+				return ctx_redirect(ctx, ifindex, 0);
 
-		fib_params.l.ipv4_src = IPV4_DIRECT_ROUTING;
-		fib_params.l.ipv4_dst = tunnel_endpoint;
+			fib_params.l.ipv4_src = IPV4_DIRECT_ROUTING;
+			fib_params.l.ipv4_dst = tunnel_endpoint;
 
-		/* neigh map doesn't contain DMACs for other nodes */
-		allow_neigh_map = false;
+			/* neigh map doesn't contain DMACs for other nodes */
+			allow_neigh_map = false;
+		}
 	}
-#endif
 
 	return fib_redirect(ctx, true, &fib_params, allow_neigh_map, ext_err, &ifindex);
 }
@@ -2628,12 +2619,10 @@ int tail_nodeport_nat_egress_ipv4(struct __ctx_buff *ctx)
 	fraginfo_t fraginfo;
 	__s8 ext_err = 0;
 	__u32 dst_sec_identity __maybe_unused = 0;
-#ifdef TUNNEL_MODE
 	__u32 src_sec_identity = ctx_load_meta(ctx, CB_SRC_LABEL);
 	__u8 cluster_id __maybe_unused = (__u8)ctx_load_meta(ctx, CB_CLUSTER_ID_EGRESS);
 	const struct remote_endpoint_info *info;
 	__be32 tunnel_endpoint = 0;
-#endif
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip4)) {
 		ret = DROP_INVALID;
@@ -2643,19 +2632,19 @@ int tail_nodeport_nat_egress_ipv4(struct __ctx_buff *ctx)
 	fraginfo = ipfrag_encode_ipv4(ip4);
 	l4_off = ETH_HLEN + ipv4_hdrlen(ip4);
 
-#ifdef TUNNEL_MODE
-	info = lookup_ip4_remote_endpoint(ip4->daddr, cluster_id);
-	if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel) {
-		tunnel_endpoint = info->tunnel_endpoint.ip4;
-		dst_sec_identity = info->sec_identity;
+	if (CONFIG(enable_tunnel_mode)) {
+		info = lookup_ip4_remote_endpoint(ip4->daddr, cluster_id);
+		if (info && info->flag_has_tunnel_ep && !info->flag_skip_tunnel) {
+			tunnel_endpoint = info->tunnel_endpoint.ip4;
+			dst_sec_identity = info->sec_identity;
 
-		target.addr = IPV4_GATEWAY;
+			target.addr = IPV4_GATEWAY;
 #if defined(ENABLE_CLUSTER_AWARE_ADDRESSING) && defined(ENABLE_INTER_CLUSTER_SNAT)
-		if (cluster_id && cluster_id != CLUSTER_ID)
-			target.addr = IPV4_INTER_CLUSTER_SNAT;
+			if (cluster_id && cluster_id != CLUSTER_ID)
+				target.addr = IPV4_INTER_CLUSTER_SNAT;
 #endif
+		}
 	}
-#endif
 
 	ret = lb4_extract_tuple(ctx, ip4, fraginfo, l4_off, &tuple);
 	if (IS_ERR(ret))
@@ -2685,36 +2674,37 @@ int tail_nodeport_nat_egress_ipv4(struct __ctx_buff *ctx)
 	 */
 	ctx_snat_done_set(ctx);
 
-#ifdef TUNNEL_MODE
-	if (info && tunnel_endpoint) {
-		__be16 src_port;
+	if (CONFIG(enable_tunnel_mode)) {
+		if (info && tunnel_endpoint) {
+			__be16 src_port;
 
-		src_port = tunnel_gen_src_port_v4(&tuple);
+			src_port = tunnel_gen_src_port_v4(&tuple);
 
-		/* The request came from outside, so we need to
-		 * set the security id in the tunnel header to WORLD_ID.
-		 * Otherwise, the remote node will assume, that the
-		 * request originated from a cluster node which will
-		 * bypass any netpol which disallows LB requests from
-		 * outside.
-		 */
-		ret = nodeport_add_tunnel_encap(ctx,
-						IPV4_DIRECT_ROUTING,
-						src_port,
-						info,
-						src_sec_identity,
-						trace.reason,
-						trace.monitor,
-						&oif,
-						bpf_htons(ETH_P_IP));
-		if (IS_ERR(ret))
-			goto drop_err;
+			/* The request came from outside, so we need to
+			* set the security id in the tunnel header to WORLD_ID.
+			* Otherwise, the remote node will assume, that the
+			* request originated from a cluster node which will
+			* bypass any netpol which disallows LB requests from
+			* outside.
+			*/
+			ret = nodeport_add_tunnel_encap(ctx,
+							IPV4_DIRECT_ROUTING,
+							src_port,
+							info,
+							src_sec_identity,
+							trace.reason,
+							trace.monitor,
+							&oif,
+							bpf_htons(ETH_P_IP));
+			if (IS_ERR(ret))
+				goto drop_err;
 
-		if (ret == CTX_ACT_REDIRECT && oif) {
-			return ctx_redirect(ctx, oif, 0);
+			if (ret == CTX_ACT_REDIRECT && oif) {
+				return ctx_redirect(ctx, oif, 0);
+			}
 		}
 	}
-#endif
+
 	if (!revalidate_data(ctx, &data, &data_end, &ip4)) {
 		ret = DROP_INVALID;
 		goto drop_err;

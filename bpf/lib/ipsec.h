@@ -209,7 +209,6 @@ ipsec_maybe_redirect_to_encrypt(struct __ctx_buff *ctx, __be16 proto,
 		if (!revalidate_data(ctx, &data, &data_end, &ip4))
 			return DROP_INVALID;
 
-#  if defined(TUNNEL_MODE)
 		/* tunnel mode needs a bit of special handling when
 		 * encapsulated packets get here the destination address is
 		 * already a cluster node IP.
@@ -220,15 +219,16 @@ ipsec_maybe_redirect_to_encrypt(struct __ctx_buff *ctx, __be16 proto,
 		 * of the destination host already and can be passed into
 		 * set_ipsec_encrypt to obtain the correct node ID and spi.
 		 */
-		if (ctx_is_overlay(ctx)) {
-			fake_info.tunnel_endpoint.ip4 = ip4->daddr;
-			fake_info.flag_has_tunnel_ep = true;
+		if (CONFIG(enable_tunnel_mode)) {
+			if (ctx_is_overlay(ctx)) {
+				fake_info.tunnel_endpoint.ip4 = ip4->daddr;
+				fake_info.flag_has_tunnel_ep = true;
 
-			dst = &fake_info;
-			src_sec_identity = get_identity(ctx);
-			goto overlay_encrypt;
+				dst = &fake_info;
+				src_sec_identity = get_identity(ctx);
+				goto overlay_encrypt;
+			}
 		}
-#  endif /* TUNNEL_MODE */
 
 		dst = lookup_ip4_remote_endpoint(ip4->daddr, 0);
 
@@ -248,20 +248,20 @@ ipsec_maybe_redirect_to_encrypt(struct __ctx_buff *ctx, __be16 proto,
 		if (!revalidate_data(ctx, &data, &data_end, &ip6))
 			return DROP_INVALID;
 
-#  if defined(TUNNEL_MODE)
 		/* See comment in IPv4 case.
 		 */
-		if (ctx_is_overlay(ctx)) {
-			ipv6_addr_copy_unaligned(&fake_info.tunnel_endpoint.ip6,
-						 (union v6addr *)&ip6->daddr);
-			fake_info.flag_has_tunnel_ep = true;
-			fake_info.flag_ipv6_tunnel_ep = true;
+		if (CONFIG(enable_tunnel_mode)) {
+			if (ctx_is_overlay(ctx)) {
+				ipv6_addr_copy_unaligned(&fake_info.tunnel_endpoint.ip6,
+							(union v6addr *)&ip6->daddr);
+				fake_info.flag_has_tunnel_ep = true;
+				fake_info.flag_ipv6_tunnel_ep = true;
 
-			dst = &fake_info;
-			src_sec_identity = get_identity(ctx);
-			goto overlay_encrypt;
+				dst = &fake_info;
+				src_sec_identity = get_identity(ctx);
+				goto overlay_encrypt;
+			}
 		}
-#  endif /* TUNNEL_MODE */
 
 		dst = lookup_ip6_remote_endpoint((union v6addr *)&ip6->daddr, 0);
 
@@ -284,9 +284,7 @@ ipsec_maybe_redirect_to_encrypt(struct __ctx_buff *ctx, __be16 proto,
 	if (!ipsec_redirect_sec_id_ok(src_sec_identity))
 		return CTX_ACT_OK;
 
-#  if defined(TUNNEL_MODE)
 overlay_encrypt:
-#  endif
 	/* mark packet for encryption
 	 * for now, we flip the 'use_meta' flag true, this is required since
 	 * rhel 8.6 kernels lack a patch which preserves marks through eBPF

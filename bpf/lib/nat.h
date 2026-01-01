@@ -623,17 +623,17 @@ snat_v4_needs_masquerade(struct __ctx_buff *ctx __maybe_unused,
 	if (ret)
 		return NAT_NEEDED;
 
-#if defined(TUNNEL_MODE) && defined(IS_BPF_OVERLAY)
+	if (CONFIG(enable_tunnel_mode) && is_defined(IS_BPF_OVERLAY)) {
 # if defined(ENABLE_CLUSTER_AWARE_ADDRESSING) && defined(ENABLE_INTER_CLUSTER_SNAT)
-	if (target->cluster_id != 0 &&
-	    target->cluster_id != CLUSTER_ID) {
-		target->addr = IPV4_INTER_CLUSTER_SNAT;
-		target->from_local_endpoint = true;
+		if (target->cluster_id != 0 &&
+			target->cluster_id != CLUSTER_ID) {
+			target->addr = IPV4_INTER_CLUSTER_SNAT;
+			target->from_local_endpoint = true;
 
-		return NAT_NEEDED;
-	}
+			return NAT_NEEDED;
+		}
 # endif
-#endif /* TUNNEL_MODE && IS_BPF_OVERLAY */
+	}
 
 #if defined(ENABLE_MASQUERADE_IPV4) && defined(IS_BPF_HOST)
 	/* To prevent aliasing with masqueraded connections,
@@ -750,7 +750,7 @@ snat_v4_needs_masquerade(struct __ctx_buff *ctx __maybe_unused,
 			return NAT_NEEDED;
 		}
 		/* Don't masquerade in native-routing mode: */
-		if (!is_defined(TUNNEL_MODE))
+		if (!CONFIG(enable_tunnel_mode))
 			return NAT_PUNT_TO_STACK;
 
 		/* In overlay routing mode, pod-to-remote-node traffic
@@ -1760,7 +1760,7 @@ snat_v6_needs_masquerade(struct __ctx_buff *ctx __maybe_unused,
 			ipv6_addr_copy(&target->addr, &masq_addr);
 			return NAT_NEEDED;
 		}
-		if (!is_defined(TUNNEL_MODE))
+		if (!CONFIG(enable_tunnel_mode))
 			return NAT_PUNT_TO_STACK;
 
 		if (remote_ep->flag_skip_tunnel)

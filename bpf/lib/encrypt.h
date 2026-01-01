@@ -51,12 +51,13 @@ strict_allow(struct __ctx_buff *ctx, __be16 proto) {
 						    STRICT_IPV4_NET,
 						    STRICT_IPV4_NET_SIZE);
 
-#if defined(TUNNEL_MODE) || defined(STRICT_IPV4_OVERLAPPING_CIDR)
-		/* Allow pod to remote-node communication */
-		dest_info = lookup_ip4_remote_endpoint(ip4->daddr, 0);
-		if (dest_info && identity_is_remote_node(dest_info->sec_identity))
-			return true;
-#endif /* TUNNEL_MODE || STRICT_IPV4_OVERLAPPING_CIDR */
+		if (CONFIG(enable_tunnel_mode) || is_defined(STRICT_IPV4_OVERLAPPING_CIDR)) {
+			/* Allow pod to remote-node communication */
+			dest_info = lookup_ip4_remote_endpoint(ip4->daddr, 0);
+			if (dest_info && identity_is_remote_node(dest_info->sec_identity))
+				return true;
+		}
+
 		return !in_strict_cidr;
 #endif /* ENABLE_IPV4 */
 	default:
