@@ -9,7 +9,6 @@
 #include "hash.h"
 #include "trace.h"
 
-#ifdef HAVE_ENCAP
 static __always_inline int
 __encap_with_nodeid4(struct __ctx_buff *ctx, __u32 src_ip, __be16 src_port,
 		     __be32 tunnel_endpoint,
@@ -27,7 +26,7 @@ __encap_with_nodeid4(struct __ctx_buff *ctx, __u32 src_ip, __be16 src_port,
 	cilium_dbg(ctx, DBG_ENCAP, tunnel_endpoint, seclabel);
 
 #if __ctx_is == __ctx_skb
-	*ifindex = ENCAP_IFINDEX;
+	*ifindex = CONFIG(encap_ifindex);
 #else
 	*ifindex = 0;
 #endif
@@ -52,7 +51,7 @@ __encap_with_nodeid6(struct __ctx_buff *ctx, const union v6addr *tunnel_endpoint
 		seclabel = LOCAL_NODE_ID;
 
 #if __ctx_is == __ctx_skb
-	*ifindex = ENCAP_IFINDEX;
+	*ifindex = CONFIG(encap_ifindex);
 #else
 	*ifindex = 0;
 #endif
@@ -98,7 +97,7 @@ encap_and_redirect_with_nodeid(struct __ctx_buff *ctx,
 			       __be16 proto)
 {
 	return __encap_and_redirect_with_nodeid(ctx, info, seclabel, dstid,
-						NOT_VTEP_DST, trace, proto);
+						0, trace, proto);
 }
 
 /* encap_and_redirect_lxc returns CTX_ACT_REDIRECT on successful redirect, and
@@ -238,4 +237,3 @@ get_tunnel_key(struct __ctx_buff *ctx, struct bpf_tunnel_key *key)
 	return DROP_NO_TUNNEL_KEY;
 }
 # endif /* ENABLE_IPV4 || ENABLE_IPV6 */
-#endif /* HAVE_ENCAP */

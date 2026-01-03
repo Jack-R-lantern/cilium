@@ -31,6 +31,9 @@
 /* Import map definitions and some default values */
 #include <bpf/config/node.h>
 
+ASSIGN_CONFIG(bool, enable_tunnel_mode, true);
+ASSIGN_CONFIG(__u16, encap_ifindex, 1);
+
 /* Overwrite the default port range defined in node_config.h
  * to have deterministic source port selection.
  */

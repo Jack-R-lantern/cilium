@@ -57,6 +57,9 @@
 /* Set the LXC source address to be the address of the backend pod */
 ASSIGN_CONFIG(union v4addr, endpoint_ipv4, { .be32 = BACKEND_IP})
 
+ASSIGN_CONFIG(bool, enable_tunnel_mode, true);
+// ASSIGN_CONFIG(__u16, encap_ifindex, 1);
+
 #include "lib/ipcache.h"
 #include "lib/policy.h"
 

@@ -184,7 +184,6 @@ static __always_inline bool ctx_egw_done(const struct __sk_buff *ctx)
 }
 #endif /* ENABLE_EGRESS_GATEWAY_COMMON */
 
-#ifdef HAVE_ENCAP
 static __always_inline __maybe_unused int
 ctx_set_encap_info4(struct __sk_buff *ctx, __u32 src_ip,
 		    __be16 src_port __maybe_unused, __u32 tunnel_endpoint,
@@ -249,4 +248,3 @@ ctx_set_encap_info6(struct __sk_buff *ctx, const union v6addr *tunnel_endpoint,
 
 	return CTX_ACT_REDIRECT;
 }
-#endif /* HAVE_ENCAP */

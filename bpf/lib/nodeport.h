@@ -133,7 +133,7 @@ nodeport_dsr_lookup_v6_nat_entry(const struct ipv6_ct_tuple *nat_tuple)
 }
 #endif
 
-#ifdef HAVE_ENCAP
+
 static __always_inline int
 nodeport_add_tunnel_encap(struct __ctx_buff *ctx, __u32 src_ip, __be16 src_port,
 			  const struct remote_endpoint_info *info,
@@ -161,7 +161,7 @@ nodeport_add_tunnel_encap(struct __ctx_buff *ctx, __u32 src_ip, __be16 src_port,
 					    src_sec_identity, info->sec_identity,
 					    ct_reason, monitor, ifindex, proto);
 	return __encap_with_nodeid4(ctx, src_ip, src_port, info->tunnel_endpoint.ip4,
-				    src_sec_identity, info->sec_identity, NOT_VTEP_DST,
+				    src_sec_identity, info->sec_identity, 0,
 				    ct_reason, monitor, ifindex, proto);
 }
 
@@ -199,7 +199,6 @@ nodeport_add_tunnel_encap_opt(struct __ctx_buff *ctx, __u32 src_ip, __be16 src_p
 					opt, opt_len, ct_reason, monitor, ifindex, proto);
 }
 # endif
-#endif /* HAVE_ENCAP */
 
 static __always_inline bool dsr_fail_needs_reply(int code __maybe_unused)
 {

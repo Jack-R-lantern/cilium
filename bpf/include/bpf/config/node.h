@@ -37,3 +37,4 @@ NODE_CONFIG(bool, policy_deny_response_enabled, "Enable ICMP responses for polic
 NODE_CONFIG(bool, hybrid_routing_enabled, "Enable hybrid mode routing based on subnet IDs")
 
 NODE_CONFIG(bool, enable_tunnel_mode, "enable tunnel mode")
+NODE_CONFIG(__u16, encap_ifindex, "encapsulation interface index")

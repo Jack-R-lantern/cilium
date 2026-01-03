@@ -709,8 +709,8 @@ ipv6_forward_to_destination(struct __ctx_buff *ctx, struct ipv6hdr *ip6,
 	#if !defined(ENABLE_NODEPORT) && defined(ENABLE_HOST_FIREWALL)
 			/* See comment in handle_ipv4_from_lxc(). */
 			if ((ct_status == CT_REPLY || ct_status == CT_RELATED) &&
-				identity_is_remote_node(dst_sec_identity))
-				goto pass_to_stack;
+			    identity_is_remote_node(dst_sec_identity))
+			    goto pass_to_stack;
 	#endif /* !ENABLE_NODEPORT && ENABLE_HOST_FIREWALL */
 
 			if (info && info->flag_has_tunnel_ep)
@@ -1195,33 +1195,33 @@ skip_vtep:
 
 	if (CONFIG(enable_tunnel_mode)) {
 		/* If the connection was established over the tunnel, ignore the
-		* destination's `skip_tunnel` flag.
-		*/
+		 * destination's `skip_tunnel` flag.
+		 */
 		if (ct_state->from_tunnel || !skip_tunnel) {
 			if (cluster_id > UINT16_MAX)
 				return DROP_INVALID_CLUSTER_ID;
 
 	#if !defined(ENABLE_NODEPORT) && defined(ENABLE_HOST_FIREWALL)
 			/*
-			* For the host firewall, traffic from a pod to a remote node is sent
-			* through the tunnel. In the case of node to remote pod traffic via
-			* externalTrafficPolicy=Local services, packets may be DNATed when
-			* they enter the remote node (without being SNATed at the same time).
-			* If kube-proxy is used, the response needs to go through the stack
-			* to apply the correct reverse DNAT, and then be routed accordingly.
-			* See #14674 for details.
-			*/
+			 * For the host firewall, traffic from a pod to a remote node is sent
+			 * through the tunnel. In the case of node to remote pod traffic via
+			 * externalTrafficPolicy=Local services, packets may be DNATed when
+			 * they enter the remote node (without being SNATed at the same time).
+			 * If kube-proxy is used, the response needs to go through the stack
+			 * to apply the correct reverse DNAT, and then be routed accordingly.
+			 * See #14674 for details.
+			 */
 			if ((ct_status == CT_REPLY || ct_status == CT_RELATED) &&
-				identity_is_remote_node(dst_sec_identity))
-				goto pass_to_stack;
+			    identity_is_remote_node(dst_sec_identity))
+			    goto pass_to_stack;
 	#endif /* !ENABLE_NODEPORT && ENABLE_HOST_FIREWALL */
 
 	#ifdef ENABLE_CLUSTER_AWARE_ADDRESSING
 			/*
-			* The destination is remote node, but the connection is originated from tunnel.
-			* Maybe the remote cluster performed SNAT for the inter-cluster communication
-			* and this is the reply for that. In that case, we need to send it back to tunnel.
-			*/
+			 * The destination is remote node, but the connection is originated from tunnel.
+			 * Maybe the remote cluster performed SNAT for the inter-cluster communication
+			 * and this is the reply for that. In that case, we need to send it back to tunnel.
+			 */
 			if (ct_status == CT_REPLY) {
 				if (identity_is_remote_node(dst_sec_identity) && ct_state->from_tunnel) {
 					/* Do not modify [info], as this will update IPcache */
