@@ -172,7 +172,7 @@ static __always_inline int __per_packet_lb_svc_xlate_4(void *ctx, struct iphdr *
 
 	lb4_fill_key(&key, &tuple);
 
-	svc = lb4_lookup_service(&key, is_defined(ENABLE_NODEPORT));
+	svc = lb4_lookup_service(&key, CONFIG(enable_nodeport));
 	if (svc) {
 		const struct lb4_backend *backend;
 
@@ -322,7 +322,7 @@ static __always_inline int __per_packet_lb_svc_xlate_6(void *ctx, struct ipv6hdr
 	 * the CT entry for destination endpoints where we can't encode the
 	 * state in the address.
 	 */
-	svc = lb6_lookup_service(&key, is_defined(ENABLE_NODEPORT));
+	svc = lb6_lookup_service(&key, CONFIG(enable_nodeport));
 	if (svc) {
 		const struct lb6_backend *backend;
 
@@ -706,12 +706,12 @@ ipv6_forward_to_destination(struct __ctx_buff *ctx, struct ipv6hdr *ip6,
 	/* The packet goes to a peer not managed by this agent instance */
 #ifdef TUNNEL_MODE
 	if (ct_state->from_tunnel || !skip_tunnel) {
-#if !defined(ENABLE_NODEPORT) && defined(ENABLE_HOST_FIREWALL)
-		/* See comment in handle_ipv4_from_lxc(). */
-		if ((ct_status == CT_REPLY || ct_status == CT_RELATED) &&
-		    identity_is_remote_node(dst_sec_identity))
-			goto pass_to_stack;
-#endif /* !ENABLE_NODEPORT && ENABLE_HOST_FIREWALL */
+		if (!CONFIG(enable_nodeport) && is_defined(ENABLE_HOST_FIREWALL)) {
+			/* See comment in handle_ipv4_from_lxc(). */
+			if ((ct_status == CT_REPLY || ct_status == CT_RELATED) &&
+				identity_is_remote_node(dst_sec_identity))
+				goto pass_to_stack;
+		}
 
 		if (info && info->flag_has_tunnel_ep)
 			return encap_and_redirect_lxc(ctx, info, SECLABEL_IPV6,
@@ -931,21 +931,21 @@ ct_recreate6:
 
 	case CT_RELATED:
 	case CT_REPLY:
-#ifdef ENABLE_NODEPORT
-		/* See comment in handle_ipv4_from_lxc().
-		 *
-		 * Needed for compatibility with pre-v1.19 CT entries.
-		 */
-		if (ct_state->node_port && lb_is_svc_proto(tuple->nexthdr)) {
-			send_trace_notify(ctx, TRACE_TO_NETWORK, SECLABEL_IPV6,
-					  *dst_sec_identity, TRACE_EP_ID_UNKNOWN,
-					  TRACE_IFINDEX_UNKNOWN,
-					  trace.reason, trace.monitor,
-					  bpf_htons(ETH_P_IPV6));
-			return tail_call_internal(ctx, CILIUM_CALL_IPV6_NODEPORT_REVNAT_EGRESS,
-						  ext_err);
+		if (CONFIG(enable_nodeport)) {
+			/* See comment in handle_ipv4_from_lxc().
+			*
+			* Needed for compatibility with pre-v1.19 CT entries.
+			*/
+			if (ct_state->node_port && lb_is_svc_proto(tuple->nexthdr)) {
+				send_trace_notify(ctx, TRACE_TO_NETWORK, SECLABEL_IPV6,
+						*dst_sec_identity, TRACE_EP_ID_UNKNOWN,
+						TRACE_IFINDEX_UNKNOWN,
+						trace.reason, trace.monitor,
+						bpf_htons(ETH_P_IPV6));
+				return tail_call_internal(ctx, CILIUM_CALL_IPV6_NODEPORT_REVNAT_EGRESS,
+							ext_err);
+			}
 		}
-#endif /* ENABLE_NODEPORT */
 		break;
 	default:
 		return DROP_UNKNOWN_CT;
@@ -1200,7 +1200,7 @@ skip_vtep:
 		if (cluster_id > UINT16_MAX)
 			return DROP_INVALID_CLUSTER_ID;
 
-#if !defined(ENABLE_NODEPORT) && defined(ENABLE_HOST_FIREWALL)
+	if (!CONFIG(enable_nodeport) && is_defined(ENABLE_HOST_FIREWALL)) {
 		/*
 		 * For the host firewall, traffic from a pod to a remote node is sent
 		 * through the tunnel. In the case of node to remote pod traffic via
@@ -1213,7 +1213,7 @@ skip_vtep:
 		if ((ct_status == CT_REPLY || ct_status == CT_RELATED) &&
 		    identity_is_remote_node(dst_sec_identity))
 			goto pass_to_stack;
-#endif /* !ENABLE_NODEPORT && ENABLE_HOST_FIREWALL */
+	}
 
 #ifdef ENABLE_CLUSTER_AWARE_ADDRESSING
 		/*
@@ -1488,24 +1488,24 @@ ct_recreate4:
 
 	case CT_RELATED:
 	case CT_REPLY:
-#ifdef ENABLE_NODEPORT
-		/* This handles reply traffic for the case where the nodeport EP
-		 * is local to the node. We'll do the tail call to perform
-		 * the reverse DNAT.
-		 *
-		 * This codepath currently doesn't support revDNAT for ICMP,
-		 * so make sure that we only send TCP/UDP/SCTP down this way.
-		 */
-		if (ct_state->node_port && lb_is_svc_proto(tuple->nexthdr)) {
-			send_trace_notify(ctx, TRACE_TO_NETWORK, SECLABEL_IPV4,
-					  *dst_sec_identity, TRACE_EP_ID_UNKNOWN,
-					  TRACE_IFINDEX_UNKNOWN,
-					  trace.reason, trace.monitor,
-					  bpf_htons(ETH_P_IP));
-			return tail_call_internal(ctx, CILIUM_CALL_IPV4_NODEPORT_REVNAT,
-						  ext_err);
+		if (CONFIG(enable_nodeport)) {
+			/* This handles reply traffic for the case where the nodeport EP
+			* is local to the node. We'll do the tail call to perform
+			* the reverse DNAT.
+			*
+			* This codepath currently doesn't support revDNAT for ICMP,
+			* so make sure that we only send TCP/UDP/SCTP down this way.
+			*/
+			if (ct_state->node_port && lb_is_svc_proto(tuple->nexthdr)) {
+				send_trace_notify(ctx, TRACE_TO_NETWORK, SECLABEL_IPV4,
+						*dst_sec_identity, TRACE_EP_ID_UNKNOWN,
+						TRACE_IFINDEX_UNKNOWN,
+						trace.reason, trace.monitor,
+						bpf_htons(ETH_P_IP));
+				return tail_call_internal(ctx, CILIUM_CALL_IPV4_NODEPORT_REVNAT,
+							ext_err);
+			}
 		}
-#endif /* ENABLE_NODEPORT */
 
 		break;
 	default:
@@ -1910,13 +1910,13 @@ int tail_ipv6_policy(struct __ctx_buff *ctx)
 		ctx_store_meta(ctx, CB_PROXY_MAGIC, ctx->mark);
 		break;
 	case CTX_ACT_OK:
-#if !defined(ENABLE_ROUTING) && !defined(ENABLE_NODEPORT)
-		/* See comment in IPv4 path. */
-		if (from_tunnel) {
-			ctx_change_type(ctx, PACKET_HOST);
-			break;
+		if (!is_defined(ENABLE_ROUTING) && !CONFIG(enable_nodeport)) {
+			/* See comment in IPv4 path. */
+			if (from_tunnel) {
+				ctx_change_type(ctx, PACKET_HOST);
+				break;
+			}
 		}
-#endif /* !ENABLE_ROUTING && !ENABLE_NODEPORT */
 
 		if (do_redirect)
 			ret = redirect_ep(ctx, CONFIG(interface_ifindex),
@@ -2150,10 +2150,10 @@ ipv4_policy(struct __ctx_buff *ctx, struct iphdr *ip4, __u32 src_label,
 	}
 
 	if (ret == CT_NEW) {
-#if defined(ENABLE_NODEPORT) && defined(ENABLE_SRV6)
-		ct_state_new.node_port = ct_has_nodeport_egress_entry4(get_ct_map4(tuple),
+		if (CONFIG(enable_nodeport) && is_defined(ENABLE_SRV6))
+			ct_state_new.node_port = ct_has_nodeport_egress_entry4(get_ct_map4(tuple),
 								       tuple, NULL, false);
-#endif /* ENABLE_NODEPORT && ENABLE_SRV6 */
+
 		ct_state_new.src_sec_id = src_label;
 		ct_state_new.from_tunnel = from_tunnel;
 		ct_state_new.proxy_redirect = *proxy_port > 0;
@@ -2226,20 +2226,20 @@ int tail_ipv4_policy(struct __ctx_buff *ctx)
 		ctx_store_meta(ctx, CB_PROXY_MAGIC, ctx->mark);
 		break;
 	case CTX_ACT_OK:
-#if !defined(ENABLE_ROUTING) && !defined(ENABLE_NODEPORT)
-		/* In tunneling mode, we execute this code to send the packet from
-		 * cilium_vxlan to lxc*. If we're using kube-proxy, we don't want to use
-		 * redirect() because that would bypass conntrack and the reverse DNAT.
-		 * Thus, we send packets to the stack, but since they have the wrong
-		 * Ethernet addresses, we need to mark them as PACKET_HOST or the kernel
-		 * will drop them.
-		 * See #14646 for details.
-		 */
-		if (from_tunnel) {
-			ctx_change_type(ctx, PACKET_HOST);
-			break;
+		if (!is_defined(ENABLE_ROUTING) && !CONFIG(enable_nodeport)) {
+			/* In tunneling mode, we execute this code to send the packet from
+			* cilium_vxlan to lxc*. If we're using kube-proxy, we don't want to use
+			* redirect() because that would bypass conntrack and the reverse DNAT.
+			* Thus, we send packets to the stack, but since they have the wrong
+			* Ethernet addresses, we need to mark them as PACKET_HOST or the kernel
+			* will drop them.
+			* See #14646 for details.
+			*/
+			if (from_tunnel) {
+				ctx_change_type(ctx, PACKET_HOST);
+				break;
+			}
 		}
-#endif /* !ENABLE_ROUTING && !ENABLE_NODEPORT */
 
 		if (do_redirect)
 			ret = redirect_ep(ctx, CONFIG(interface_ifindex),

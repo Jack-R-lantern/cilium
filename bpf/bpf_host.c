@@ -187,25 +187,25 @@ handle_ipv6(struct __ctx_buff *ctx, __u32 secctx __maybe_unused,
 		}
 	}
 
-#ifdef ENABLE_NODEPORT
-	if (!from_host) {
-		if (!ctx_skip_nodeport(ctx)) {
-			bool is_dsr = false;
+	if (CONFIG(enable_nodeport)) {
+		if (!from_host) {
+			if (!ctx_skip_nodeport(ctx)) {
+				bool is_dsr = false;
 
-			ret = nodeport_lb6(ctx, ip6, secctx, punt_to_stack, ext_err, &is_dsr);
-			/* nodeport_lb6() returns with TC_ACT_REDIRECT for
-			 * traffic to L7 LB. Policy enforcement needs to take
-			 * place after L7 LB has processed the packet, so we
-			 * return to stack immediately here with
-			 * TC_ACT_REDIRECT.
-			 */
-			if (ret < 0 || ret == TC_ACT_REDIRECT)
-				return ret;
-			if (*punt_to_stack)
-				return ret;
+				ret = nodeport_lb6(ctx, ip6, secctx, punt_to_stack, ext_err, &is_dsr);
+				/* nodeport_lb6() returns with TC_ACT_REDIRECT for
+				* traffic to L7 LB. Policy enforcement needs to take
+				* place after L7 LB has processed the packet, so we
+				* return to stack immediately here with
+				* TC_ACT_REDIRECT.
+				*/
+				if (ret < 0 || ret == TC_ACT_REDIRECT)
+					return ret;
+				if (*punt_to_stack)
+					return ret;
+			}
 		}
 	}
-#endif /* ENABLE_NODEPORT */
 
 #ifdef ENABLE_HOST_FIREWALL
 	if (skip_host_firewall)
@@ -617,27 +617,27 @@ handle_ipv4(struct __ctx_buff *ctx, __u32 secctx __maybe_unused,
 		return DROP_FRAG_NOSUPPORT;
 #endif
 
-#ifdef ENABLE_NODEPORT
-	if (!from_host) {
-		if (!ctx_skip_nodeport(ctx)) {
-			bool is_dsr = false;
+	if (CONFIG(enable_nodeport)) {
+		if (!from_host) {
+			if (!ctx_skip_nodeport(ctx)) {
+				bool is_dsr = false;
 
-			int ret = nodeport_lb4(ctx, ip4, ETH_HLEN, secctx, punt_to_stack,
-					       ext_err, &is_dsr);
+				int ret = nodeport_lb4(ctx, ip4, ETH_HLEN, secctx, punt_to_stack,
+							ext_err, &is_dsr);
 
-			/* nodeport_lb4() returns with TC_ACT_REDIRECT for
-			 * traffic to L7 LB. Policy enforcement needs to take
-			 * place after L7 LB has processed the packet, so we
-			 * return to stack immediately here with
-			 * TC_ACT_REDIRECT.
-			 */
-			if (ret < 0 || ret == TC_ACT_REDIRECT)
-				return ret;
-			if (*punt_to_stack)
-				return ret;
+				/* nodeport_lb4() returns with TC_ACT_REDIRECT for
+				* traffic to L7 LB. Policy enforcement needs to take
+				* place after L7 LB has processed the packet, so we
+				* return to stack immediately here with
+				* TC_ACT_REDIRECT.
+				*/
+				if (ret < 0 || ret == TC_ACT_REDIRECT)
+					return ret;
+				if (*punt_to_stack)
+					return ret;
+			}
 		}
 	}
-#endif /* ENABLE_NODEPORT */
 
 #ifdef ENABLE_HOST_FIREWALL
 	if (from_host) {
@@ -1183,14 +1183,15 @@ int cil_from_netdev(struct __ctx_buff *ctx)
 {
 	__u32 src_id = UNKNOWN_ID;
 	__be16 proto = 0;
+	__u32 flags __maybe_unused = 0;
 
 	bpf_clear_meta(ctx);
 
 	check_and_store_ip_trace_id(ctx);
 
-#ifdef ENABLE_NODEPORT_ACCELERATION
-	__u32 flags = ctx_get_xfer(ctx, XFER_FLAGS);
-#endif
+	if (CONFIG(enable_nodeport_acceleration))
+		flags = ctx_get_xfer(ctx, XFER_FLAGS);
+
 	int ret;
 
 	/* Filter allowed vlan id's and pass them back to kernel.
@@ -1210,14 +1211,11 @@ int cil_from_netdev(struct __ctx_buff *ctx)
 
 	ctx_skip_nodeport_clear(ctx);
 
-#ifdef ENABLE_NODEPORT_ACCELERATION
-	if (flags & XFER_PKT_NO_SVC)
+	if (CONFIG(enable_nodeport_acceleration) && flags & XFER_PKT_NO_SVC)
 		ctx_skip_nodeport_set(ctx);
-
 #ifdef HAVE_ENCAP
 	if (flags & XFER_PKT_SNAT_DONE)
 		ctx_snat_done_set(ctx);
-#endif
 #endif
 
 	if (!validate_ethertype(ctx, &proto)) {
@@ -1512,17 +1510,17 @@ skip_host_firewall:
 		goto exit;
 #endif
 
-#ifdef ENABLE_NODEPORT
-	if (!ctx_snat_done(ctx) && !ctx_is_overlay(ctx) && !ctx_is_encrypt(ctx)) {
-		/*
-		 * handle_nat_fwd tail calls in the majority of cases,
-		 * so control might never return to this program.
-		 */
-		ret = handle_nat_fwd(ctx, 0, src_sec_identity, proto, false, &trace, &ext_err);
-		if (ret == CTX_ACT_REDIRECT)
-			return ret;
+	if CONFIG(enable_nodeport) {
+		if (!ctx_snat_done(ctx) && !ctx_is_overlay(ctx) && !ctx_is_encrypt(ctx)) {
+			/*
+			* handle_nat_fwd tail calls in the majority of cases,
+			* so control might never return to this program.
+			*/
+			ret = handle_nat_fwd(ctx, 0, src_sec_identity, proto, false, &trace, &ext_err);
+			if (ret == CTX_ACT_REDIRECT)
+				return ret;
+		}
 	}
-#endif
 
 #ifdef ENABLE_HEALTH_CHECK
 exit:
@@ -1752,23 +1750,23 @@ int cil_to_host(struct __ctx_buff *ctx)
 		ctx->mark = MARK_MAGIC_SKIP_TPROXY;
 #endif /* !TUNNEL_MODE */
 
-# ifdef ENABLE_NODEPORT
-	if (!ctx_is_encrypt(ctx))
-		goto skip_ipsec_nodeport_revdnat;
+	if (CONFIG(enable_nodeport)) {
+		if (!ctx_is_encrypt(ctx))
+			goto skip_ipsec_nodeport_revdnat;
 
-	if (!validate_ethertype(ctx, &proto))
-		goto skip_ipsec_nodeport_revdnat;
+		if (!validate_ethertype(ctx, &proto))
+			goto skip_ipsec_nodeport_revdnat;
 
-	/* handle_nat_fwd() tail calls in the majority of cases, so control
-	 * might never return to this program. Since IPsec is not compatible
-	 * iwth Host Firewall, this won't be an issue.
-	 */
-	ret = handle_nat_fwd(ctx, 0, src_id, proto, true, &trace, &ext_err);
-	if (IS_ERR(ret))
-		goto out;
+		/* handle_nat_fwd() tail calls in the majority of cases, so control
+		* might never return to this program. Since IPsec is not compatible
+		* iwth Host Firewall, this won't be an issue.
+		*/
+		ret = handle_nat_fwd(ctx, 0, src_id, proto, true, &trace, &ext_err);
+		if (IS_ERR(ret))
+			goto out;
 
 skip_ipsec_nodeport_revdnat:
-# endif /* ENABLE_NODEPORT */
+	}
 
 #endif /* ENABLE_IPSEC */
 #ifdef ENABLE_HOST_FIREWALL

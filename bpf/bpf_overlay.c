@@ -85,24 +85,24 @@ static __always_inline int handle_ipv6(struct __ctx_buff *ctx,
 		return DROP_FRAG_NOSUPPORT;
 #endif
 
-#ifdef ENABLE_NODEPORT
-	if (!ctx_skip_nodeport(ctx)) {
-		bool punt_to_stack = false;
+	if (CONFIG(enable_nodeport)) {
+		if (!ctx_skip_nodeport(ctx)) {
+			bool punt_to_stack = false;
 
-		ret = nodeport_lb6(ctx, ip6, *identity, &punt_to_stack,
-				   ext_err, &is_dsr);
-		/* nodeport_lb6() returns with TC_ACT_REDIRECT for
-		 * traffic to L7 LB. Policy enforcement needs to take
-		 * place after L7 LB has processed the packet, so we
-		 * return to stack immediately here with
-		 * TC_ACT_REDIRECT.
-		 */
-		if (ret < 0 || ret == TC_ACT_REDIRECT)
-			return ret;
-		if (punt_to_stack)
-			return ret;
+			ret = nodeport_lb6(ctx, ip6, *identity, &punt_to_stack,
+					ext_err, &is_dsr);
+			/* nodeport_lb6() returns with TC_ACT_REDIRECT for
+			* traffic to L7 LB. Policy enforcement needs to take
+			* place after L7 LB has processed the packet, so we
+			* return to stack immediately here with
+			* TC_ACT_REDIRECT.
+			*/
+			if (ret < 0 || ret == TC_ACT_REDIRECT)
+				return ret;
+			if (punt_to_stack)
+				return ret;
+		}
 	}
-#endif
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip6))
 		return DROP_INVALID;
